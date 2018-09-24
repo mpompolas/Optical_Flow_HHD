@@ -1,0 +1,168 @@
+load('al_Lhemi_tess_CTF_4800Val_Rhemi_tess_CTF_4800Val_cerebellum_tess_CTF_1000V_tess_talCS_MNIcereb.mat')
+load('MNI_braincereb_small_tess_CTF.mat')
+% load('ImageGridTime.mat')
+FV.faces=sss.Faces{1};
+FV.vertices=sss.Vertices{1}';
+[NFV,remove_vertices]=tessellation_redundancies(FV,1,1e-15);
+PARAM.FV.faces=NFV.faces;
+PARAM.FV.vertices=NFV.vertices;
+good_vertices=setdiff([1:length(FV.vertices)],remove_vertices);
+ImageGridAmp=ss.ImageGridAmp(good_vertices,:);
+PARAM.F=abs(double(ImageGridAmp));
+PARAM.VERBOSE=1;
+PARAM.hornschunk=0.01;
+% PARAM.Time=[1 2 3 4 5 6 7 8];
+PARAM.Time=80:250;
+PARAM.GRAPHE=0;
+% clear ImageGridAmp tess2mri_interp
+a=tic;
+[cont_grad_v,grad_v,tangent_basis,tg_basis,aires,norm_faces,norm_vertices,index1,index2]=matrices_contraintes_ter(PARAM.FV.faces,PARAM.FV.vertices,3);
+matlabpool(4);
+parfor i=1:100
+    if i==1
+       Jflowc(i)=J_analysis_cortex_p(F(:,i:(i+12)),cont_grad_v,grad_v,tangent_basis,tg_basis,aires,norm_faces,norm_vertices,index1,index2); 
+    else
+       Jflowc(i)=J_analysis_cortex_p(F(:,(i-1)*13:((i-1)*13)+13),cont_grad_v,grad_v,tangent_basis,tg_basis,aires,norm_faces,norm_vertices,index1,index2);
+    end
+end
+matlabpool close
+toc(a)
+
+[fiffsetup] = fiff_setup_read_raw('spontaneous_newSSP_raw_sss.fif');
+[data,times] = fiff_read_raw_segment(fiffsetup);
+data=data(1:306,:);
+data = bandpassFilter_all(data,2000,5,60);
+[T]=nsi_computevistransfmatrix('spontaneous_newSSP_raw_sss.fif',pos_extrap,normals_extrap,.0001);
+dataextrap=T*data;
+FV.faces=tri_extrap;
+FV.vertices=pos_extrap;
+F=dataextrap;
+
+[cont_grad_v,grad_v,tangent_basis,tg_basis,aires,norm_faces,norm_vertices,index1,index2]=matrices_contraintes_ter(FV.faces,FV.vertices,3);
+
+M=abs(max(F(:)));
+M=max(M);
+if size(PARAM.F,2) >100
+ll=floor(size(PARAM.F,2)/100);
+lll=(size(PARAM.F,2)/100-ll)*100;
+matlabpool(4);
+parfor i=1:11
+if i==1
+Jflowc(i)=J_analysis_cortex_p(F(:,i:(i+99)),FV,M,cont_grad_v,grad_v,tangent_basis,tg_basis,aires,norm_faces,norm_vertices,index1,index2);
+else
+Jflowc(i)=J_analysis_cortex_p(F(:,(i-1)*100:((i-1)*100)+100),FV,M,cont_grad_v,grad_v,tangent_basis,tg_basis,aires,norm_faces,norm_vertices,index1,index2);
+end
+end
+matlabpool close
+Jflowc(ll+1)=J_analysis_cortex_p(F(:,(ll-1)*100:lll),FV,M,cont_grad_v,grad_v,tangent_basis,tg_basis,aires,norm_faces,norm_vertices,index1,index2);
+else
+Jflowc=J_analysis_cortex_p(F,FV,M,cont_grad_v,grad_v,tangent_basis,tg_basis,aires,norm_faces,norm_vertices,index1,index2);
+end
+
+ for i=1:ll
+if i==1
+b(1,i:(i+99))=Jflowc(1,i).de';
+else
+b(1,((i-1)*1500+1):((i-1)*1500)+1500)=Jflowc(1,i).de(2:end,1)';
+end
+end
+plot(b)
+[coefs,longs] = wavedec(b,14,'dmey');
+app_rec = wrmcoef('a',coefs,longs,'dmey');
+plot(app_rec(15,:))
+
+for i=2:length(b)-1
+    if b(i) > 5*mean([b(i+1) b(i-1)])
+         b(i) = mean([b(i+1) b(i-1)]);
+    end
+end
+b=filter([1/5 1/5 1/5 1/5 1/5],1,b);
+
+rParabEmd = rParabEmd__L (b,40,40,1);
+figure
+for i=1:15
+plot(rParabEmd(:,i))
+pause
+end
+% 
+% local_sched = findResource('scheduler','type','local');
+% obj = createJob(local_sched);
+% createTask(obj, @J_analysis_cortex, 1, {{[],PARAM,10000:15000}  {[],PARAM,45000:50000}});
+% submit(obj);
+% [pending running finished] = findTask(obj)
+% out = getAllOutputArguments(obj);
+% a=out{1};
+% destroy(obj)
+% 
+% 
+% 
+% 
+% FV=PARAM.FV;
+% DE=zeros(1,1374);
+% sFV2=FV;
+% [cont_grad_v,cont_grad_vb,grad_v,tangent_basis,tg_basis,aires,norm_tri,norm_coord,index1,index2]=matrices_contraintes_ter_divergence(sFV2.faces,sFV2.vertices,3);
+% TriConn = faces_connectivity(FV);
+% TriConn1 = TriConn(1:5415);
+% TriConn1 = TriConn(5416:10730);
+% tri = unique([TriConn1{:}]);
+% faces1=FV.faces(tri,:);
+% for t=1:1374
+%         v12=sum((Jflowc.V(faces1(:,1),:,t)+Jflowc.V(faces1(:,2),:,t)).^2,2)/4;
+%         v23=sum((Jflowc.V(faces1(:,2),:,t)+Jflowc.V(faces1(:,3),:,t)).^2,2)/4;
+%         v13=sum((Jflowc.V(faces1(:,1),:,t)+Jflowc.V(faces1(:,3),:,t)).^2,2)/4;
+%         DE(t)=sum(aires(tri).*(v12+v23+v13));
+% 
+% end
+% 
+% 
+% 
+% % OPTIONS.seuilA=0.1;
+% % OPTIONS.seuilV=0.1;
+% % OPTIONS.fleche=1;
+% % OPTIONS.filename='sherry2';
+% % vizualisation(Jflowc,1:10,OPTIONS)
+% 
+% for i=624:1374
+% 
+% subplot(2,1,1)
+%     h1=view_surface('MNE',FV.faces,FV.vertices,PARAM.F(:,i));
+% %     figure
+% subplot(2,1,2)
+%    h2=view_surface('U',FV.faces,FV.vertices,U(:,i));
+% %     pause
+% %   close all 
+%     pause
+%     clf(h1);clf(h2)
+% end
+% 
+% 
+% view_surface('MNE',PARAM.FV.faces,PARAM.FV.vertices)
+% for i=80:200
+%     h1=view_surface('MNE',PARAM.FV.faces,PARAM.FV.vertices,PARAM.F(:,i));
+%     hold on
+%     h=quiver3(PARAM.FV.vertices(:,1),PARAM.FV.vertices(:,2),PARAM.FV.vertices(:,3),Jflowc.V(:,1,i),Jflowc.V(:,2,i),Jflowc.V(:,3,i),'g');
+%     delete h
+% end
+% 
+% 
+%     h2=view_surface('U',FV.faces,FV.vertices,U(:,i).*100000000000000000000000000000000000);
+%     
+%     hold on
+%     quiver3(FV.vertices(:,1),FV.vertices(:,2),FV.vertices(:,3),Jflowc.V(:,1,i),Jflowc.V(:,2,i),Jflowc.V(:,3,i),'g')
+%     hold off
+% UU=U(:,i);
+% UUU=U(:,i);
+% [N,ii] = hist((U(:,i)),20);
+% clear N
+% 
+%  UU = UU .* ((UU)>ii(12));
+%   UUU = UUU .* ((UU) < ii(8));
+%   UUUU=UUU+UU;
+% h3=view_surface('Figure_3',FV.faces,FV.vertices, UUUU);
+% 
+% 
+% pause
+% 
+%     clf(h1);clf(h2);clf(h3);
+% end
+% 

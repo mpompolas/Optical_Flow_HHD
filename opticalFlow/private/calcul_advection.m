@@ -1,0 +1,25 @@
+function [I_pred,M,R]=calcul_advection(I_true,A1,A2,A3,iteration,t,tau)
+% First basic version of the pure advection equation.
+% I_true(t,:)=I_0
+
+%/---Script Authors---------------------\
+%|                                      | 
+%|   *** J.Lefèvre, PhD                 |  
+%|   julien.lefevre@chups.jussieu.fr    |
+%|                                      | 
+%\--------------------------------------/
+
+I_0=I_true(:,t);
+
+M=(1/tau)*A1+0.5*(A2+A2')+(tau/3)*A3;
+R=(1/tau)*A1+0.5*(A2-A2')-(tau/6)*A3; 
+
+% Prediction
+I_pred=zeros(size(I_0,1),iteration+1);
+I_pred(:,1)=I_0;
+I_p=I_0;
+for ii=1:iteration;
+    I_p=M\(R*I_p);
+    I_pred(:,ii+1)=I_p;
+end
+
